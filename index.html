@@ -1,1 +1,26 @@
-
+//index.html
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<title>Tower Defense - Start</title>
+<style>
+        body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background: #222; color: #fff; }
+        .box { background: #333; padding: 20px; border-radius: 8px; text-align: center; }
+        input, button { padding: 10px; margin: 10px 0; border-radius: 4px; border: none; }
+        button { background: #e74c3c; color: white; cursor: pointer; font-weight: bold; }
+</style>
+</head>
+<body>
+<div class="box">
+<h1>YGO Tower Defense</h1>
+<form action="game.html" method="GET">
+<input type="text" name="player" placeholder="Nome Giocatore" required>
+<br>
+<button type="submit">INIZIA PARTITA</button>
+</form>
+<br>
+<a href="leaderboard.html" style="color: #ccc;">Vedi Classifica</a>
+</div>
+</body>
+</html>
