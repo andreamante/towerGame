@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<title>Tower Defense - Game</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+<div id="player-name">Giocatore: <span>---</span></div>
+<div id="incoming-dmg">Danno in arrivo prossimo turno: <span style="color:red">0</span></div>
+<div id="score-board">
+            Score: <span id="score">0</span> | PE: <span id="pe">0</span> | Turno: <span id="turn">1</span>
+</div>
+</header>
+<div id="main-area">
+<div id="base-area">
+<!-- Metti un path valido per l'immagine della base se ce l'hai -->
+<img id="base-img" src="https://cdn-icons-png.flaticon.com/512/2090/2090258.png" alt="Base">
+<h3>BASE HP: <span id="base-hp">10000</span></h3>
+</div>
+<div id="grid-area">
+<!-- Generato dinamicamente via JS/TS -->
+</div>
+</div>
+<div id="hand-area">
+<!-- Carte in mano -->
+<div class="controls">
+<button id="btn-end-turn">Fine Turno</button>
+<button id="btn-buy-card">Compra Carta (5 PE)</button>
+<button id="btn-swap-card">Cambia Carta Selezionata (1 PE)</button>
+</div>
+</div>
+ 
+    <script src="game.js"></script> <!-- Ricordati di compilare il ts! -->
+</body>
+</html>

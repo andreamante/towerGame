@@ -1,0 +1,69 @@
+//leaderboard.html
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<title>Classifica</title>
+<style>
+
+        body { font-family: sans-serif; background: #222; color: white; display: flex; flex-direction: column; align-items: center; padding: 50px; }
+
+        table { border-collapse: collapse; width: 300px; margin-top: 20px; }
+
+        th, td { border: 1px solid #444; padding: 10px; text-align: center; }
+
+        th { background: #e74c3c; }
+
+        a { color: #e74c3c; text-decoration: none; margin-top: 20px; display: inline-block;}
+</style>
+</head>
+<body>
+<h1>TOP 10 DIFENSORI</h1>
+<h3 id="last-score" style="color: yellow;"></h3>
+<table>
+<thead>
+<tr><th>Posizione</th><th>Nome</th><th>Punteggio</th></tr>
+</thead>
+<tbody id="lb-body">
+<!-- Riempito via JS -->
+</tbody>
+</table>
+<a href="index.html">Torna alla Home</a>
+ 
+    <script>
+
+        const params = new URLSearchParams(window.location.search);
+
+        const lastScore = params.get('score');
+
+        if(lastScore) {
+
+            document.getElementById('last-score').innerText = `Il tuo punteggio: ${lastScore}`;
+
+        }
+ 
+        const lb = JSON.parse(localStorage.getItem('ygo_leaderboard') || '[]');
+
+        const tbody = document.getElementById('lb-body');
+
+        if(lb.length === 0) {
+
+            tbody.innerHTML = '<tr><td colspan="3">Nessun punteggio registrato</td></tr>';
+
+        } else {
+
+            lb.forEach((entry, idx) => {
+
+                const tr = document.createElement('tr');
+
+                tr.innerHTML = `<td>${idx + 1}</td><td>${entry.name}</td><td>${parseInt(entry.score)}</td>`;
+
+                tbody.appendChild(tr);
+
+            });
+
+        }
+</script>
+</body>
+</html>
+ 
