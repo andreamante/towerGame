@@ -1,4 +1,3 @@
-// Tipi per non sbroccare con la griglia
 interface YGOCard {
     id: number;
     name: string;
@@ -6,13 +5,12 @@ interface YGOCard {
     def: number;
     image_url: string;
 }
- 
+
 interface Enemy {
     card: YGOCard;
     stunTurns: number;
 }
- 
-// Stato Globale (un po' brutto tenerle così ma per un file singolo va benissimo)
+
 let playerName: string = "Player";
 let hp: number = 10000;
 let pe: number = 0;
@@ -22,190 +20,183 @@ let enemiesDestroyed: number = 0;
 let numRows: number = 3;
 let enemiesPerTurn: number = 1;
 const cols: number = 7;
- 
-let deck: YGOCard[] = []; // Pool di mostri scaricati
+
+let deck: YGOCard[] = [];
 let hand: YGOCard[] = [];
-let grid: (Enemy | null)[][] = []; // array 2D
+let grid: (Enemy | null)[][] = [];
+let defenders: (YGOCard | null)[] = [];
 let selectedCardIndex: number | null = null;
- 
-// Riferimenti DOM
+
 const domGrid = document.getElementById('grid-area')!;
 const domHand = document.getElementById('hand-area')!;
 const domHP = document.getElementById('base-hp')!;
 const domPE = document.getElementById('pe')!;
 const domScore = document.getElementById('score')!;
 const domTurn = document.getElementById('turn')!;
-const domIncoming = document.querySelector('#incoming-dmg span')!;
- 
-// INIT
+const domIncoming = document.querySelector('#incoming-dmg span') as HTMLElement;
+
 async function initGame() {
     const params = new URLSearchParams(window.location.search);
     playerName = params.get('player') || 'Anonimo';
     document.querySelector('#player-name span')!.textContent = playerName;
- 
+
     await fetchCardPool();
     initGrid();
-    // Pesca iniziale di 7 carte
-    for(let i=0; i<7; i++) drawCard();
+    for (let i = 0; i < 7; i++) drawCard();
     renderHand();
     renderGrid();
     updateUI();
     setupListeners();
 }
- 
-// Prendo un tot di mostri normali per assicurarmi che abbiano ATK e DEF
+
 async function fetchCardPool() {
     try {
         const res = await fetch('https://db.ygoprodeck.com/api/v7/cardinfo.php?type=normal%20monster');
         const data = await res.json();
-        // Mappo solo i dati che mi servono
-        deck = data.data.map((c: any) => ({
-            id: c.id,
-            name: c.name,
-            atk: c.atk,
-            def: c.def,
-            image_url: c.card_images[0].image_url_small
-        }));
+        deck = data.data
+            .filter((c: any) => typeof c.atk === 'number' && typeof c.def === 'number')
+            .map((c: any) => ({
+                id: c.id,
+                name: c.name,
+                atk: c.atk,
+                def: c.def,
+                image_url: c.card_images[0].image_url_small
+            }));
     } catch (e) {
         alert("Errore API YGO. Ricarica la pagina.");
     }
 }
- 
+
 function getRandomCard(): YGOCard {
+    if (deck.length === 0) return { id: 0, name: "???", atk: 0, def: 0, image_url: "" };
     const idx = Math.floor(Math.random() * deck.length);
     return deck[idx];
 }
- 
+
 function initGrid() {
     grid = [];
+    defenders = [];
     for (let r = 0; r < numRows; r++) {
-        const row = new Array(cols).fill(null);
-        grid.push(row);
+        grid.push(new Array(cols).fill(null));
+        defenders.push(null);
     }
 }
- 
-// LOGICA DI GIOCO
+
 function drawCard() {
-    if (hand.length < 10) {
-        hand.push(getRandomCard());
-    }
+    if (hand.length < 10) hand.push(getRandomCard());
 }
- 
+
 function playCardOnRow(rowIndex: number) {
-    if (selectedCardIndex === null) return;
-    const defender = hand[selectedCardIndex];
-    // Logica combattimento
-    // Trovo tutti i nemici sulla riga
-    let enemiesOnRow = [];
-    for (let c = 0; c < cols; c++) {
-        if (grid[rowIndex][c]) enemiesOnRow.push({ col: c, enemy: grid[rowIndex][c]! });
-    }
- 
-    if (enemiesOnRow.length === 0) {
-        alert("Nessun nemico su questa riga!");
+    if (selectedCardIndex === null) {
+        alert("Seleziona prima una carta dalla mano!");
         return;
     }
- 
-    // Se l'attacco copre più nemici? Sommo le loro difese per vedere se li sfonda tutti (come da traccia "coprire l'attacco di più nemici")
-    let totalDef = enemiesOnRow.reduce((sum, e) => sum + e.enemy.card.def, 0);
- 
-    if (defender.atk > totalDef && enemiesOnRow.length > 1) {
-        // Distrugge tutti ma sparisce
-        enemiesOnRow.forEach(e => {
-            grid[rowIndex][e.col] = null;
-            onEnemyDestroyed(defender.atk, e.enemy.card.def);
-        });
-    } else {
-        // Attacca il primo nemico della fila (il più vicino al castello)
-        const firstTarget = enemiesOnRow[0];
-        if (defender.atk > firstTarget.enemy.card.def) {
-            grid[rowIndex][firstTarget.col] = null;
-            onEnemyDestroyed(defender.atk, firstTarget.enemy.card.def);
-            // Il difensore non si consuma se non esplicitato? Nella traccia non dice che sparisce se vince singolo. 
-            // Assumo rimanga "virtuale" e lo rimuovo dalla mano comunque.
-        } else {
-            // Non ha abbastanza attacco -> Stun di 2 turni per lui e chi gli sta dietro
-            enemiesOnRow.forEach(e => e.enemy.stunTurns = 2);
-        }
+    if (defenders[rowIndex]) {
+        alert("C'è già un difensore su questa riga!");
+        return;
     }
- 
+    const defenderCard = hand[selectedCardIndex];
     hand.splice(selectedCardIndex, 1);
     selectedCardIndex = null;
+    defenders[rowIndex] = defenderCard;
+
+    resolveDefense(rowIndex);
     renderHand();
     renderGrid();
     updateUI();
 }
- 
+
+function resolveDefense(rowIndex: number) {
+    const defenderCard = defenders[rowIndex];
+    if (!defenderCard) return;
+
+    const enemiesOnRow: { col: number, enemy: Enemy }[] = [];
+    for (let c = 0; c < cols; c++) {
+        const cell = grid[rowIndex][c];
+        if (cell) enemiesOnRow.push({ col: c, enemy: cell });
+    }
+    if (enemiesOnRow.length === 0) return;
+
+    const totalDef = enemiesOnRow.reduce((sum, e) => sum + e.enemy.card.def, 0);
+
+    if (enemiesOnRow.length > 1 && defenderCard.atk > totalDef) {
+        enemiesOnRow.forEach(e => {
+            grid[rowIndex][e.col] = null;
+            onEnemyDestroyed(defenderCard.atk, e.enemy.card.def);
+        });
+        defenders[rowIndex] = null;
+        return;
+    }
+
+    const target = enemiesOnRow[0];
+    if (defenderCard.atk > target.enemy.card.def) {
+        grid[rowIndex][target.col] = null;
+        onEnemyDestroyed(defenderCard.atk, target.enemy.card.def);
+    } else {
+        defenders[rowIndex] = null;
+        enemiesOnRow.forEach(e => e.enemy.stunTurns = 2);
+    }
+}
+
 function onEnemyDestroyed(PA: number, PD: number) {
     pe += 1;
     enemiesDestroyed += 1;
-    // Formula traccia: 1 - ((PA-PD) / PA) * PA * STAGE (uso turn come STAGE)
-    // Nota: la formula matematica ridotta sarebbe PD * Stage. Uso quella letterale.
-    const precision = 1 - ((PA - PD) / PA);
-    let pts = Math.floor(precision * PA * turn);
-    if(pts < 0) pts = 1; // evitiamo punteggi negativi se fa calcoli strani
+    let pts = PA > 0 ? Math.floor((1 - (PA - PD) / PA) * PA * turn) : PD * turn;
+    if (pts < 0) pts = 1;
     score += pts;
- 
-    // Check level up nemici
     if (enemiesDestroyed % 10 === 0) enemiesPerTurn++;
 }
- 
+
 function processTurn() {
-    // 1. Spostamento nemici e danni
+    for (let r = 0; r < numRows; r++) {
+        if (defenders[r]) resolveDefense(r);
+    }
+
     for (let r = 0; r < numRows; r++) {
         for (let c = 0; c < cols; c++) {
             const cell = grid[r][c];
-            if (cell) {
-                if (cell.stunTurns > 0) {
-                    cell.stunTurns--;
-                    continue; // fermo
-                }
- 
-                // Se è all'ultima colonna prima del castello (col 0)
-                if (c === 0) {
-                    hp -= cell.card.atk;
-                    grid[r][c] = null;
-                    if (hp <= 0) gameOver();
-                } else {
-                    // Si sposta avanti se libero
-                    if (!grid[r][c - 1]) {
-                        grid[r][c - 1] = cell;
-                        grid[r][c] = null;
-                    }
-                }
+            if (!cell) continue;
+            if (cell.stunTurns > 0) {
+                cell.stunTurns--;
+                continue;
+            }
+            if (c === 0) {
+                hp -= cell.card.atk;
+                grid[r][c] = null;
+                if (hp <= 0) { gameOver(); return; }
+            } else if (!grid[r][c - 1]) {
+                grid[r][c - 1] = cell;
+                grid[r][c] = null;
             }
         }
     }
- 
-    // 2. Generazione nuovi nemici (a colonna cols-1)
-    for(let i=0; i<enemiesPerTurn; i++){
-        // Trova righe libere in ultima colonna
-        let freeRows = [];
-        for(let r=0; r<numRows; r++) {
-            if(!grid[r][cols-1]) freeRows.push(r);
+
+    for (let i = 0; i < enemiesPerTurn; i++) {
+        const freeRows: number[] = [];
+        for (let r = 0; r < numRows; r++) {
+            if (!grid[r][cols - 1]) freeRows.push(r);
         }
-        if(freeRows.length > 0) {
+        if (freeRows.length > 0) {
             const randomRow = freeRows[Math.floor(Math.random() * freeRows.length)];
-            grid[randomRow][cols-1] = { card: getRandomCard(), stunTurns: 0 };
+            grid[randomRow][cols - 1] = { card: getRandomCard(), stunTurns: 0 };
         }
     }
- 
-    // 3. Incrementi di turno
+
     turn++;
     if (turn % 3 === 0) drawCard();
     if (turn % 10 === 0) {
         numRows++;
         grid.push(new Array(cols).fill(null));
+        defenders.push(null);
     }
- 
+
     renderGrid();
     renderHand();
     updateUI();
 }
- 
+
 function gameOver() {
     alert(`GAME OVER! Hai totalizzato ${score} punti.`);
-    // Salva nel localstorage per la leaderboard
     let lb = JSON.parse(localStorage.getItem('ygo_leaderboard') || '[]');
     lb.push({ name: playerName, score: score });
     lb.sort((a: any, b: any) => parseInt(b.score) - parseInt(a.score));
@@ -213,14 +204,26 @@ function gameOver() {
     localStorage.setItem('ygo_leaderboard', JSON.stringify(lb));
     window.location.href = `leaderboard.html?score=${score}`;
 }
- 
-// RENDERING
+
 function renderGrid() {
     domGrid.innerHTML = '';
     for (let r = 0; r < numRows; r++) {
         const rowDiv = document.createElement('div');
         rowDiv.className = 'row';
         rowDiv.onclick = () => playCardOnRow(r);
+
+        const slotDiv = document.createElement('div');
+        const def = defenders[r];
+        slotDiv.className = 'defender-slot' + (def ? '' : ' empty');
+        if (def) {
+            const img = document.createElement('img');
+            img.src = def.image_url;
+            img.className = 'card-mini';
+            img.title = `Difensore ATK: ${def.atk}`;
+            slotDiv.appendChild(img);
+        }
+        rowDiv.appendChild(slotDiv);
+
         for (let c = 0; c < cols; c++) {
             const cellDiv = document.createElement('div');
             cellDiv.className = 'cell';
@@ -237,9 +240,8 @@ function renderGrid() {
         domGrid.appendChild(rowDiv);
     }
 }
- 
+
 function renderHand() {
-    // Tengo i bottoni, svuoto le carte
     const bottoni = document.querySelector('.controls')!;
     domHand.innerHTML = '';
     hand.forEach((card, index) => {
@@ -247,7 +249,8 @@ function renderHand() {
         img.src = card.image_url;
         img.className = 'card-in-hand ' + (selectedCardIndex === index ? 'card-selected' : '');
         img.title = `ATK: ${card.atk} DEF: ${card.def}`;
-        img.onclick = () => {
+        img.onclick = (e) => {
+            e.stopPropagation();
             selectedCardIndex = selectedCardIndex === index ? null : index;
             renderHand();
         };
@@ -255,31 +258,25 @@ function renderHand() {
     });
     domHand.appendChild(bottoni);
 }
- 
+
 function updateUI() {
     domHP.innerText = hp.toString();
     domPE.innerText = pe.toString();
     domScore.innerText = score.toString();
     domTurn.innerText = turn.toString();
- 
-    // Calcolo potenza in arrivo (nemici a colonna 0 non stunnati)
+
     let incomingDmg = 0;
     for (let r = 0; r < numRows; r++) {
+        if (defenders[r]) continue;
         const cell = grid[r][0];
-        if (cell && cell.stunTurns === 0) {
-            incomingDmg += cell.card.atk;
-        }
+        if (cell && cell.stunTurns === 0) incomingDmg += cell.card.atk;
     }
-    const domIncoming = document.querySelector('#incoming-dmg span') as HTMLElement;
     domIncoming.innerText = incomingDmg.toString();
 }
- 
-// BOTTONI
+
 function setupListeners() {
-    document.getElementById('btn-end-turn')!.onclick = () => {
-        processTurn();
-    };
- 
+    document.getElementById('btn-end-turn')!.onclick = () => processTurn();
+
     document.getElementById('btn-buy-card')!.onclick = () => {
         if (pe >= 5 && hand.length < 10) {
             pe -= 5;
@@ -290,7 +287,7 @@ function setupListeners() {
             alert("Non hai abbastanza PE o hai la mano piena (Max 10)!");
         }
     };
- 
+
     document.getElementById('btn-swap-card')!.onclick = () => {
         if (selectedCardIndex === null) {
             alert("Seleziona una carta prima!");
@@ -307,6 +304,5 @@ function setupListeners() {
         }
     };
 }
- 
-// Via
+
 initGame();
